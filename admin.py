@@ -151,6 +151,20 @@ def status():
     return JSONResponse(cookie_manager.get_status())
 
 
+# ─── Tauri sync endpoint ──────────────────────────────────────────────────────
+
+@app.post("/api/sync")
+async def api_sync(request: Request):
+    """Tauri app pushes active account cookies here on account select / cookie update."""
+    try:
+        body = await request.json()
+        cookies = body.get("cookies", [])
+        count = cookie_manager.set_manual_cookies(cookies)
+        return JSONResponse({"ok": True, "cookie_count": count})
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+
+
 # ─── Entry ────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

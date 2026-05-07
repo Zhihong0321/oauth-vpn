@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GemShare</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <!-- Sidebar -->
+  <aside id="sidebar">
+    <div id="sidebar-header">
+      <span class="logo">GemShare</span>
+      <span id="version-badge">v0.1.0</span>
+    </div>
+
+    <div id="connection-box">
+      <div id="status-dot"></div>
+      <span id="status-label">Disconnected</span>
+      <button id="btn-toggle">Connect</button>
+    </div>
+
+    <div id="accounts-header">
+      <span>Accounts</span>
+      <button id="btn-add-account">+ Add</button>
+    </div>
+    <ul id="account-list"></ul>
+  </aside>
+
+  <!-- Main -->
+  <main id="main">
+    <!-- Empty state -->
+    <div id="empty-state">
+      <p>Select an account or add a new one.</p>
+    </div>
+
+    <!-- Account detail panel -->
+    <div id="account-panel" class="hidden">
+      <div id="panel-header">
+        <input id="field-label" type="text" placeholder="Account label (e.g. Work, Personal)" />
+        <input id="field-email" type="text" placeholder="Email" />
+        <div id="panel-actions">
+          <button id="btn-activate" class="primary">Set Active</button>
+          <button id="btn-delete" class="danger">Delete</button>
+        </div>
+      </div>
+
+      <div id="active-badge" class="hidden">✅ Currently Active</div>
+
+      <div id="cookie-section">
+        <div id="cookie-header">
+          <span>Session Cookies</span>
+          <span id="cookie-count">0 cookies</span>
+        </div>
+        <p class="hint">Export from Cookie-Editor extension → Export as JSON → paste below</p>
+        <textarea id="cookie-input" placeholder='Paste Cookie-Editor JSON here...'></textarea>
+        <button id="btn-save-cookies" class="primary">Save Cookies</button>
+        <div id="cookie-status"></div>
+      </div>
+    </div>
+
+    <!-- Add account panel -->
+    <div id="add-panel" class="hidden">
+      <h2>Add Account</h2>
+      <label>Label</label>
+      <input id="new-label" type="text" placeholder="e.g. Team Account 1" />
+      <label>Email</label>
+      <input id="new-email" type="text" placeholder="example@gmail.com" />
+      <button id="btn-create" class="primary">Create Account</button>
+    </div>
+  </main>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
