@@ -136,34 +136,32 @@ fn sync_cookies_to_hub(hub_url: &str, cookies: &[serde_json::Value]) -> Result<(
 
 // ── Proxy management ──────────────────────────────────────────────────────────
 
+const PAC_URL: &str = "https://oauth-vpn-production.up.railway.app/proxy.pac";
+const REG_PATH: &str = r"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
+
 #[tauri::command]
 fn get_proxy_status() -> bool {
     use winreg::{enums::HKEY_CURRENT_USER, RegKey};
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    if let Ok(k) = hkcu.open_subkey(
-        r"Software\Microsoft\Windows\CurrentVersion\Internet Settings",
-    ) {
-        let v: u32 = k.get_value("ProxyEnable").unwrap_or(0);
-        return v == 1;
+    if let Ok(k) = hkcu.open_subkey(REG_PATH) {
+        let pac: String = k.get_value("AutoConfigURL").unwrap_or_default();
+        return pac.contains("railway.app");
     }
     false
 }
 
 #[tauri::command]
-fn enable_proxy(hub_host: String, hub_port: String) -> Result<(), String> {
+fn enable_proxy() -> Result<(), String> {
+    // Use PAC file — only Google traffic goes through proxy, everything else direct.
+    // This prevents slowdowns for non-Google browsing.
     use winreg::{enums::*, RegKey};
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let k = hkcu
-        .open_subkey_with_flags(
-            r"Software\Microsoft\Windows\CurrentVersion\Internet Settings",
-            KEY_WRITE,
-        )
+        .open_subkey_with_flags(REG_PATH, KEY_WRITE)
         .map_err(|e| e.to_string())?;
-    k.set_value("ProxyEnable", &1u32).map_err(|e| e.to_string())?;
-    k.set_value("ProxyServer", &format!("{}:{}", hub_host, hub_port))
-        .map_err(|e| e.to_string())?;
-    k.set_value("ProxyOverride", &"localhost;127.0.0.1;<local>")
-        .map_err(|e| e.to_string())?;
+    k.set_value("AutoConfigURL", &PAC_URL).map_err(|e| e.to_string())?;
+    // Disable manual proxy (PAC takes over)
+    k.set_value("ProxyEnable", &0u32).map_err(|e| e.to_string())?;
     refresh_wininet();
     Ok(())
 }
@@ -173,11 +171,9 @@ fn disable_proxy() -> Result<(), String> {
     use winreg::{enums::*, RegKey};
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let k = hkcu
-        .open_subkey_with_flags(
-            r"Software\Microsoft\Windows\CurrentVersion\Internet Settings",
-            KEY_WRITE,
-        )
+        .open_subkey_with_flags(REG_PATH, KEY_WRITE)
         .map_err(|e| e.to_string())?;
+    k.set_value("AutoConfigURL", &"").map_err(|e| e.to_string())?;
     k.set_value("ProxyEnable", &0u32).map_err(|e| e.to_string())?;
     refresh_wininet();
     Ok(())
@@ -223,6 +219,7 @@ pub fn run() {
             disable_proxy,
             install_cert,
         ])
+        // Only Google traffic goes through proxy — see PAC file at /proxy.pac
         .run(tauri::generate_context!())
         .expect("error running tauri application");
 }

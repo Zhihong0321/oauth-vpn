@@ -151,6 +151,24 @@ def status():
     return JSONResponse(cookie_manager.get_status())
 
 
+@app.get("/proxy.pac", response_class=Response)
+def proxy_pac():
+    """PAC file — only routes *.google.com through the proxy. Everything else direct."""
+    pac = """function FindProxyForURL(url, host) {
+    var domains = [
+        "google.com", "googleapis.com", "gstatic.com",
+        "googleusercontent.com", "accounts.google.com", "gemini.google.com"
+    ];
+    for (var i = 0; i < domains.length; i++) {
+        if (host === domains[i] || host.indexOf("." + domains[i]) !== -1) {
+            return "PROXY tramway.proxy.rlwy.net:25307";
+        }
+    }
+    return "DIRECT";
+}"""
+    return Response(content=pac, media_type="application/x-ns-proxy-autoconfig")
+
+
 # ─── Tauri sync endpoint ──────────────────────────────────────────────────────
 
 @app.post("/api/sync")

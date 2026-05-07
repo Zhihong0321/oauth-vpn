@@ -128,13 +128,14 @@ async function refreshProxyStatus() {
 }
 
 function setProxyUI(connected) {
-  const dot = document.getElementById('status-dot');
+  const dot   = document.getElementById('status-dot');
   const label = document.getElementById('status-label');
-  const btn = document.getElementById('btn-toggle');
-  dot.className = connected ? 'connected' : '';
+  const sub   = document.getElementById('status-sub');
+  const btn   = document.getElementById('btn-toggle');
+  dot.className   = connected ? 'connected' : '';
+  btn.className   = connected ? 'connected' : '';
   label.textContent = connected ? 'Connected' : 'Disconnected';
-  btn.textContent = connected ? 'Disconnect' : 'Connect';
-  btn.className = connected ? 'disconnect' : '';
+  sub.textContent   = connected ? 'Google only — click to disconnect' : 'Click to connect';
 }
 
 async function onToggleProxy() {
@@ -148,10 +149,7 @@ async function onToggleProxy() {
       document.getElementById('status-label').textContent = 'Installing cert…';
       await invoke('install_cert', { hubUrl: state.hub_url });
     } catch (_) {}
-    await invoke('enable_proxy', {
-      hubHost: 'tramway.proxy.rlwy.net',
-      hubPort: '25307',
-    });
+    await invoke('enable_proxy');
     setProxyUI(true);
   }
 }
