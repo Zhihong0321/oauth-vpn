@@ -1,18 +1,14 @@
 """
 mitmproxy addon — injects Google session cookies for *.google.com.
-
-Strategy:
-  - Our session cookies (SID, __Secure-*, etc.) always override the browser's.
-  - Non-session browser cookies (preferences, CSRF tokens) are preserved.
-  - Cookies are fetched from cookie_manager on startup and auto-refreshed.
 """
 
 import threading
 import logging
 import cookie_manager
 from mitmproxy import http
+from mitmproxy.log import log_tier
 
-logger = logging.getLogger("gemshare.addon")
+logger = logging.getLogger("gemshare")
 
 GOOGLE_TLDS = ("google.com", "gemini.google.com", "accounts.google.com")
 
@@ -22,11 +18,6 @@ def _is_google(host: str) -> bool:
 
 
 def _merge_cookies(browser_header: str, our_cookies: dict) -> str:
-    """
-    Build merged Cookie header:
-      our session cookies  +  browser non-session cookies
-    Our cookies win for any name collision.
-    """
     browser_keep: dict = {}
     for chunk in browser_header.split(";"):
         chunk = chunk.strip()
@@ -35,8 +26,7 @@ def _merge_cookies(browser_header: str, our_cookies: dict) -> str:
             k = k.strip()
             if k not in cookie_manager.SESSION_COOKIE_NAMES:
                 browser_keep[k] = v.strip()
-
-    merged = {**browser_keep, **our_cookies}  # ours override
+    merged = {**browser_keep, **our_cookies}
     return "; ".join(f"{k}={v}" for k, v in merged.items())
 
 
@@ -45,22 +35,29 @@ class GeminiCookieInjector:
         threading.Thread(target=self._startup_load, daemon=True).start()
 
     def _startup_load(self):
-        try:
-            cookie_manager.get_cookies(force_refresh=True)
-        except Exception as exc:
-            logger.error("Startup cookie load failed: %s", exc)
+        cookies = cookie_manager.get_cookies()
+        if cookies:
+            print(f"[GemShare] Startup: {len(cookies)} cookies loaded from file", flush=True)
+        else:
+            print("[GemShare] Startup: no cookies found — upload via dashboard", flush=True)
 
     def request(self, flow: http.HTTPFlow):
-        if not _is_google(flow.request.pretty_host):
+        host = flow.request.pretty_host
+        if not _is_google(host):
             return
 
         cookies = cookie_manager.get_cookies()
         if not cookies:
-            logger.warning("No cookies available — request to %s passes through unmodified", flow.request.pretty_host)
+            print(f"[GemShare] ❌ INJECT SKIP — no cookies — {host}", flush=True)
             return
 
         existing = flow.request.headers.get("cookie", "")
-        flow.request.headers["cookie"] = _merge_cookies(existing, cookies)
+        merged = _merge_cookies(existing, cookies)
+        flow.request.headers["cookie"] = merged
+
+        # Log injected cookie names so we can verify in Railway logs
+        injected_names = list(cookies.keys())
+        print(f"[GemShare] ✅ INJECT {host} — {len(injected_names)} cookies: {', '.join(injected_names[:8])}{'...' if len(injected_names) > 8 else ''}", flush=True)
 
 
 addons = [GeminiCookieInjector()]
