@@ -15,9 +15,9 @@ WORKDIR /app
 COPY addon.py cookie_manager.py admin.py start.sh ./
 RUN chmod +x start.sh
 
-# Admin HTTP server (Railway public URL - Railway sets PORT env var to this)
+# Admin HTTP server (Railway public HTTP domain routes here)
 EXPOSE 8080
 # mitmproxy proxy port (Railway TCP proxy)
-EXPOSE 8888
+EXPOSE 8890
 
 CMD ["./start.sh"]
