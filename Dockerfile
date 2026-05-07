@@ -1,6 +1,5 @@
 FROM python:3.11-slim
 
-# System deps for mitmproxy
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
@@ -15,9 +14,12 @@ WORKDIR /app
 COPY addon.py cookie_manager.py admin.py start.sh ./
 RUN chmod +x start.sh
 
-# Admin HTTP server (Railway public HTTP domain routes here)
+# Generate mitmproxy CA cert at BUILD TIME so it never changes on restart/redeploy.
+# The cert is baked into the image — install it once and forget it.
+RUN timeout 5 mitmdump -p 19999 --quiet 2>/dev/null || true && \
+    echo "CA cert generated:" && ls /root/.mitmproxy/
+
 EXPOSE 8080
-# mitmproxy proxy port (Railway TCP proxy)
 EXPOSE 8888
 
 CMD ["./start.sh"]
