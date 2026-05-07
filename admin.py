@@ -154,5 +154,6 @@ def status():
 # ─── Entry ────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port, log_level="warning")
+    port = int(os.environ.get("PORT", 8080))
+    print(f"[GemShare] Admin server starting on port {port}", flush=True)
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")

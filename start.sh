@@ -1,21 +1,19 @@
 #!/bin/sh
-set -e
 
-echo "[GemShare] Starting admin server on port ${PORT:-8000}..."
+echo "[GemShare] Starting admin on port ${PORT:-8080}..."
 python admin.py &
-ADMIN_PID=$!
 
-# Give mitmproxy 3s to generate its CA cert before admin serves /cert
-sleep 3
+# Give mitmproxy time to generate CA cert before admin serves /cert
+sleep 5
 
 echo "[GemShare] Starting mitmproxy on port 8888..."
-mitmdump \
-  --listen-host 0.0.0.0 \
-  --listen-port 8888 \
-  --scripts addon.py \
-  --set block_global=false \
-  --set connection_strategy=lazy &
-MITM_PID=$!
-
-# If either process dies, kill both and exit (Railway will restart)
-wait $ADMIN_PID $MITM_PID
+# Loop so container stays alive if mitmproxy crashes
+while true; do
+  mitmdump \
+    --listen-host 0.0.0.0 \
+    --listen-port 8888 \
+    -s addon.py \
+    --set block_global=false
+  echo "[GemShare] mitmproxy exited (code $?), restarting in 5s..."
+  sleep 5
+done
