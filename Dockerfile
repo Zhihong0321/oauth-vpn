@@ -18,6 +18,6 @@ RUN chmod +x start.sh
 # Admin HTTP server (Railway public HTTP domain routes here)
 EXPOSE 8080
 # mitmproxy proxy port (Railway TCP proxy)
-EXPOSE 8890
+EXPOSE 8888
 
 CMD ["./start.sh"]
