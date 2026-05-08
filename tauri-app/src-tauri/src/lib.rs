@@ -160,50 +160,27 @@ if ($found) { Write-Host 'CERT_FOUND' } else { Write-Host 'CERT_MISSING' }
 
 #[tauri::command]
 fn get_proxy_status() -> bool {
-    // Read DefaultConnectionSettings — what Chrome/Edge actually use
-    // Flags byte 8: 0x04 bit set = manual proxy ON
-    let script = r#"
-$blob = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Connections' -EA SilentlyContinue).DefaultConnectionSettings
-if ($blob -and $blob.Count -ge 9 -and ($blob[8] -band 0x04)) {
-    $len = [BitConverter]::ToUInt32($blob, 9)
-    $server = [Text.Encoding]::ASCII.GetString($blob, 13, $len)
-    if ($server -match 'rlwy\.net') { Write-Host 'ON' } else { Write-Host 'OFF' }
-} else { Write-Host 'OFF' }
-"#;
-    std::process::Command::new("powershell")
-        .args(["-ExecutionPolicy", "Bypass", "-Command", script])
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).contains("ON"))
-        .unwrap_or(false)
+    use winreg::{enums::HKEY_CURRENT_USER, RegKey};
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    if let Ok(k) = hkcu.open_subkey(REG_PATH) {
+        let enabled: u32 = k.get_value("ProxyEnable").unwrap_or(0);
+        let server: String = k.get_value("ProxyServer").unwrap_or_default();
+        return enabled == 1 && server.contains("rlwy.net");
+    }
+    false
 }
 
 #[tauri::command]
 fn enable_proxy() -> Result<(), String> {
     let script = format!(r#"
-$regConn = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Connections"
-$regIE   = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings"
-$proxy   = "{host}:{port}"
-$bypass  = "localhost;127.0.0.1;<local>"
-$pb = [Text.Encoding]::ASCII.GetBytes($proxy)
-$bb = [Text.Encoding]::ASCII.GetBytes($bypass)
-$cur = (Get-ItemProperty $regConn -EA SilentlyContinue).DefaultConnectionSettings
-$cnt = if ($cur -and $cur.Count -ge 8) {{ [BitConverter]::ToUInt32($cur, 4) + 1 }} else {{ 1 }}
-$blob = [byte[]]@(0x46,0,0,0) + [BitConverter]::GetBytes([uint32]$cnt) + [byte[]]@(0x05) + [BitConverter]::GetBytes([uint32]$pb.Length) + $pb + [BitConverter]::GetBytes([uint32]$bb.Length) + $bb + [byte[]]@(0,0,0,0)
-Set-ItemProperty $regConn "DefaultConnectionSettings" $blob
-Set-ItemProperty $regConn "SavedLegacySettings" $blob
-Set-ItemProperty $regIE "ProxyEnable" 1
-Set-ItemProperty $regIE "ProxyServer" $proxy
-Set-ItemProperty $regIE "ProxyOverride" $bypass
-Add-Type @'
-using System; using System.Runtime.InteropServices;
-public class PB {
-    [DllImport("user32.dll", CharSet=CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr h, uint m, UIntPtr w, string l, uint f, uint t, out UIntPtr r);
-    [DllImport("winhttp.dll")] public static extern void WinHttpNotifyProxySettingsChanged();
-}
-'@ -EA SilentlyContinue
-$r = [UIntPtr]::Zero
-[PB]::SendMessageTimeout([IntPtr]-1, 0x001A, [UIntPtr]::Zero, "inetcpl.cpl", 2, 5000, [ref]$r)
-try { [PB]::WinHttpNotifyProxySettingsChanged() } catch {}
+$regPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings"
+Set-ItemProperty -Path $regPath -Name ProxyEnable -Value 1
+Set-ItemProperty -Path $regPath -Name ProxyServer -Value "{host}:{port}"
+Set-ItemProperty -Path $regPath -Name ProxyOverride -Value "localhost;127.0.0.1;<local>"
+$sig = '[DllImport("wininet.dll")] public static extern bool InternetSetOption(IntPtr h, int o, IntPtr b, int l);'
+$t = Add-Type -MemberDefinition $sig -Name WinINet -Namespace Win32 -PassThru -EA SilentlyContinue
+$t::InternetSetOption([IntPtr]::Zero, 39, [IntPtr]::Zero, 0) | Out-Null
+$t::InternetSetOption([IntPtr]::Zero, 37, [IntPtr]::Zero, 0) | Out-Null
 Write-Host "PROXY_OK"
 "#, host = PROXY_HOST, port = PROXY_PORT);
     let out = std::process::Command::new("powershell")
@@ -220,24 +197,12 @@ Write-Host "PROXY_OK"
 #[tauri::command]
 fn disable_proxy() -> Result<(), String> {
     let script = r#"
-$regConn = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Connections"
-$regIE   = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings"
-$cur = (Get-ItemProperty $regConn -EA SilentlyContinue).DefaultConnectionSettings
-$cnt = if ($cur -and $cur.Count -ge 8) { [BitConverter]::ToUInt32($cur, 4) + 1 } else { 1 }
-$blob = [byte[]]@(0x46,0,0,0) + [BitConverter]::GetBytes([uint32]$cnt) + [byte[]]@(0x01) + [byte[]]@(0,0,0,0) + [byte[]]@(0,0,0,0) + [byte[]]@(0,0,0,0)
-Set-ItemProperty $regConn "DefaultConnectionSettings" $blob
-Set-ItemProperty $regConn "SavedLegacySettings" $blob
-Set-ItemProperty $regIE "ProxyEnable" 0
-Add-Type @'
-using System; using System.Runtime.InteropServices;
-public class PB2 {
-    [DllImport("user32.dll", CharSet=CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr h, uint m, UIntPtr w, string l, uint f, uint t, out UIntPtr r);
-    [DllImport("winhttp.dll")] public static extern void WinHttpNotifyProxySettingsChanged();
-}
-'@ -EA SilentlyContinue
-$r = [UIntPtr]::Zero
-[PB2]::SendMessageTimeout([IntPtr]-1, 0x001A, [UIntPtr]::Zero, "inetcpl.cpl", 2, 5000, [ref]$r)
-try { [PB2]::WinHttpNotifyProxySettingsChanged() } catch {}
+$regPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings"
+Set-ItemProperty -Path $regPath -Name ProxyEnable -Value 0
+$sig = '[DllImport("wininet.dll")] public static extern bool InternetSetOption(IntPtr h, int o, IntPtr b, int l);'
+$t = Add-Type -MemberDefinition $sig -Name WinINet2 -Namespace Win32b -PassThru -EA SilentlyContinue
+$t::InternetSetOption([IntPtr]::Zero, 39, [IntPtr]::Zero, 0) | Out-Null
+$t::InternetSetOption([IntPtr]::Zero, 37, [IntPtr]::Zero, 0) | Out-Null
 Write-Host "PROXY_OFF"
 "#;
     std::process::Command::new("powershell")
