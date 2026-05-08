@@ -198,7 +198,8 @@ fn install_cert(hub_url: String) -> Result<(), String> {
         r#"
 $ErrorActionPreference = 'Stop'
 try {{
-    $pem = (Invoke-WebRequest '{}/cert' -UseBasicParsing).Content
+    $bytes = (Invoke-WebRequest '{}/cert' -UseBasicParsing).Content
+    $pem = [System.Text.Encoding]::ASCII.GetString($bytes)
     $b64 = ($pem -replace '-----BEGIN CERTIFICATE-----','') -replace '-----END CERTIFICATE-----','' -replace '\s',''
     $der = [Convert]::FromBase64String($b64)
     $c = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2(,$der)
