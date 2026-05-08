@@ -7,79 +7,44 @@
 </head>
 <body>
 
-<!-- Header -->
 <header>
   <span class="logo">GemShare</span>
-  <div class="tabs">
-    <button class="tab active" id="tab-dash" onclick="showTab('dash')">Dashboard</button>
-    <button class="tab" id="tab-admin" onclick="showTab('admin')">Admin</button>
-  </div>
-  <span id="app-version">v0.1.0</span>
+  <div id="hub-pill" class="pill grey">Hub checking…</div>
+  <span id="app-version" class="version">v0.1.0</span>
 </header>
 
-<!-- ── DASHBOARD ─────────────────────────────────────────── -->
-<div id="page-dash" class="page">
+<div id="main">
 
-  <!-- Big connect toggle -->
-  <div class="card connect-card" id="connect-card" onclick="toggleProxy()">
-    <div id="connect-dot" class="dot"></div>
-    <div>
-      <div id="connect-label" class="connect-label">Disconnected</div>
-      <div id="connect-sub" class="connect-sub">Click to connect — only Google traffic routed</div>
+  <!-- Profile cards -->
+  <div id="cards-section">
+    <div class="section-header">
+      <span class="section-title">Profiles</span>
+      <button class="btn-add" onclick="showAddForm()">+ Add Profile</button>
     </div>
+    <div id="card-list"></div>
   </div>
 
-  <!-- Active profile -->
-  <div class="card">
-    <div class="card-title">Active Profile</div>
-    <div class="row">
-      <select id="profile-select" onchange="onProfileSelect()">
-        <option value="">— No profiles yet —</option>
-      </select>
-      <div id="health-badge" class="badge grey">No cookies</div>
+  <!-- Live log panel -->
+  <div id="log-panel">
+    <div class="section-header" style="margin-bottom:6px">
+      <span class="section-title">Activity Log</span>
+      <button class="btn-add" style="font-size:.7em;padding:3px 8px" onclick="clearLog()">Clear</button>
     </div>
-    <div id="health-detail" class="hint"></div>
+    <div id="log-output"></div>
   </div>
 
-  <!-- OTA -->
-  <div class="card">
-    <div class="card-title">App Updates</div>
-    <div class="row">
-      <span id="ota-label" class="hint">Checking…</span>
-      <button id="btn-update" class="btn-sm hidden" onclick="doUpdate()">Install Update</button>
-    </div>
-  </div>
-
-  <!-- Hub status -->
-  <div class="card">
-    <div class="card-title">Hub Status</div>
-    <div id="hub-status" class="hint">Checking…</div>
-  </div>
-
-</div>
-
-<!-- ── ADMIN ──────────────────────────────────────────────── -->
-<div id="page-admin" class="page hidden">
-
-  <div class="admin-header">
-    <span class="card-title">Profiles</span>
-    <button class="btn-primary" onclick="showForm()">+ New Profile</button>
-  </div>
-
-  <div id="profile-list"></div>
-
-  <!-- Add / Edit form -->
-  <div id="profile-form" class="card hidden">
-    <div class="card-title" id="form-title">New Profile</div>
+  <!-- Add / Edit form (inline) -->
+  <div id="profile-form" class="form-card hidden">
+    <div class="form-title" id="form-title">New Profile</div>
     <label>Label</label>
     <input id="form-label" type="text" placeholder="e.g. Team Account 1" />
     <label>Email</label>
     <input id="form-email" type="text" placeholder="user@gmail.com" />
-    <label>Cookies <span class="hint">(Cookie-Editor → Export as JSON)</span></label>
+    <label>Session Cookies <span class="label-hint">— Cookie-Editor → Export as JSON</span></label>
     <textarea id="form-cookies" placeholder="Paste JSON here…"></textarea>
     <div class="form-actions">
       <button class="btn-primary" onclick="saveProfile()">Save</button>
-      <button class="btn-ghost" onclick="cancelForm()">Cancel</button>
+      <button class="btn-ghost" onclick="hideForm()">Cancel</button>
     </div>
     <div id="form-msg"></div>
   </div>
