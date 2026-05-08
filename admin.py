@@ -153,6 +153,27 @@ def status():
     return JSONResponse(cookie_manager.get_status())
 
 
+@app.get("/api/check-session")
+def check_session():
+    """Actually tests if stored cookies are accepted by Google. Returns real login status."""
+    import requests as req
+    cookies = cookie_manager.get_cookies()
+    if not cookies:
+        return JSONResponse({"logged_in": False, "reason": "no_cookies"})
+    try:
+        r = req.get(
+            "https://gemini.google.com/app",
+            cookies=cookies,
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36"},
+            timeout=10,
+            allow_redirects=True,
+        )
+        logged_in = "Sign in" not in r.text and r.status_code == 200
+        return JSONResponse({"logged_in": logged_in, "reason": "ok" if logged_in else "cookies_rejected_by_google"})
+    except Exception as e:
+        return JSONResponse({"logged_in": False, "reason": str(e)})
+
+
 @app.get("/log")
 def get_log():
     """Live log — readable directly by Claude or anyone debugging."""
