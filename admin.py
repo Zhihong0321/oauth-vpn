@@ -178,7 +178,14 @@ def check_session():
             timeout=15,
             impersonate="chrome120",
         )
-        logged_in = "Sign in" not in r.text and r.status_code == 200
+        # Gemini is a JS SPA — "Sign in" appears in HTML even when logged in.
+        # Real indicator: account email/profile data present in the response.
+        logged_in = r.status_code == 200 and (
+            "leanhhu" in r.text or
+            "bard-storage" in r.text or
+            "sign-out" in r.text.lower() or
+            len(r.text) > 200000  # logged-in page is much larger than login page
+        )
         return JSONResponse({"logged_in": logged_in, "reason": "ok" if logged_in else "cookies_rejected_by_google"})
     except Exception as e:
         return JSONResponse({"logged_in": False, "reason": str(e)})
