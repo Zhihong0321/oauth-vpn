@@ -160,24 +160,14 @@ if ($found) { Write-Host 'CERT_FOUND' } else { Write-Host 'CERT_MISSING' }
 
 #[tauri::command]
 fn get_proxy_status() -> bool {
-    // Read DefaultConnectionSettings blob — what Windows Settings and Chrome actually use
-    // Flags byte at offset 8: bit 0x04 = manual proxy ON
-    let script = r#"
-$blob = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Connections' -EA SilentlyContinue).DefaultConnectionSettings
-if ($blob -and $blob.Count -ge 13) {
-    $flags = $blob[8]
-    $len = [BitConverter]::ToUInt32($blob, 9)
-    if ($len -gt 0 -and ($blob.Count -ge (13 + $len))) {
-        $server = [Text.Encoding]::ASCII.GetString($blob, 13, $len)
-        if (($flags -band 0x04) -and $server -match 'rlwy\.net') { Write-Host 'ON' } else { Write-Host 'OFF' }
-    } else { Write-Host 'OFF' }
-} else { Write-Host 'OFF' }
-"#;
-    std::process::Command::new("powershell")
-        .args(["-ExecutionPolicy", "Bypass", "-Command", script])
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).contains("ON"))
-        .unwrap_or(false)
+    use winreg::{enums::HKEY_CURRENT_USER, RegKey};
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    if let Ok(k) = hkcu.open_subkey(REG_PATH) {
+        let enabled: u32 = k.get_value("ProxyEnable").unwrap_or(0);
+        let server: String = k.get_value("ProxyServer").unwrap_or_default();
+        return enabled == 1 && server.contains("rlwy.net");
+    }
+    false
 }
 
 #[tauri::command]
