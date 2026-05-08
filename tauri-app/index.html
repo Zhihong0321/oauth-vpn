@@ -2,76 +2,90 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GemShare</title>
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
-  <!-- Sidebar -->
-  <aside id="sidebar">
-    <div id="sidebar-header">
-      <span class="logo">GemShare</span>
-      <span id="version-badge">v0.1.0</span>
+
+<!-- Header -->
+<header>
+  <span class="logo">GemShare</span>
+  <div class="tabs">
+    <button class="tab active" id="tab-dash" onclick="showTab('dash')">Dashboard</button>
+    <button class="tab" id="tab-admin" onclick="showTab('admin')">Admin</button>
+  </div>
+  <span id="app-version">v0.1.0</span>
+</header>
+
+<!-- ── DASHBOARD ─────────────────────────────────────────── -->
+<div id="page-dash" class="page">
+
+  <!-- Big connect toggle -->
+  <div class="card connect-card" id="connect-card" onclick="toggleProxy()">
+    <div id="connect-dot" class="dot"></div>
+    <div>
+      <div id="connect-label" class="connect-label">Disconnected</div>
+      <div id="connect-sub" class="connect-sub">Click to connect — only Google traffic routed</div>
     </div>
+  </div>
 
-    <button id="btn-toggle">
-      <div id="status-dot"></div>
-      <div id="toggle-text">
-        <span id="status-label">Disconnected</span>
-        <span id="status-sub">Click to connect</span>
-      </div>
-    </button>
-
-    <div id="accounts-header">
-      <span>Accounts</span>
-      <button id="btn-add-account">+ Add</button>
+  <!-- Active profile -->
+  <div class="card">
+    <div class="card-title">Active Profile</div>
+    <div class="row">
+      <select id="profile-select" onchange="onProfileSelect()">
+        <option value="">— No profiles yet —</option>
+      </select>
+      <div id="health-badge" class="badge grey">No cookies</div>
     </div>
-    <ul id="account-list"></ul>
-  </aside>
+    <div id="health-detail" class="hint"></div>
+  </div>
 
-  <!-- Main -->
-  <main id="main">
-    <!-- Empty state -->
-    <div id="empty-state">
-      <p>Select an account or add a new one.</p>
+  <!-- OTA -->
+  <div class="card">
+    <div class="card-title">App Updates</div>
+    <div class="row">
+      <span id="ota-label" class="hint">Checking…</span>
+      <button id="btn-update" class="btn-sm hidden" onclick="doUpdate()">Install Update</button>
     </div>
+  </div>
 
-    <!-- Account detail panel -->
-    <div id="account-panel" class="hidden">
-      <div id="panel-header">
-        <input id="field-label" type="text" placeholder="Account label (e.g. Work, Personal)" />
-        <input id="field-email" type="text" placeholder="Email" />
-        <div id="panel-actions">
-          <button id="btn-activate" class="primary">Set Active</button>
-          <button id="btn-delete" class="danger">Delete</button>
-        </div>
-      </div>
+  <!-- Hub status -->
+  <div class="card">
+    <div class="card-title">Hub Status</div>
+    <div id="hub-status" class="hint">Checking…</div>
+  </div>
 
-      <div id="active-badge" class="hidden">✅ Currently Active</div>
+</div>
 
-      <div id="cookie-section">
-        <div id="cookie-header">
-          <span>Session Cookies</span>
-          <span id="cookie-count">0 cookies</span>
-        </div>
-        <p class="hint">Export from Cookie-Editor extension → Export as JSON → paste below</p>
-        <textarea id="cookie-input" placeholder='Paste Cookie-Editor JSON here...'></textarea>
-        <button id="btn-save-cookies" class="primary">Save Cookies</button>
-        <div id="cookie-status"></div>
-      </div>
+<!-- ── ADMIN ──────────────────────────────────────────────── -->
+<div id="page-admin" class="page hidden">
+
+  <div class="admin-header">
+    <span class="card-title">Profiles</span>
+    <button class="btn-primary" onclick="showForm()">+ New Profile</button>
+  </div>
+
+  <div id="profile-list"></div>
+
+  <!-- Add / Edit form -->
+  <div id="profile-form" class="card hidden">
+    <div class="card-title" id="form-title">New Profile</div>
+    <label>Label</label>
+    <input id="form-label" type="text" placeholder="e.g. Team Account 1" />
+    <label>Email</label>
+    <input id="form-email" type="text" placeholder="user@gmail.com" />
+    <label>Cookies <span class="hint">(Cookie-Editor → Export as JSON)</span></label>
+    <textarea id="form-cookies" placeholder="Paste JSON here…"></textarea>
+    <div class="form-actions">
+      <button class="btn-primary" onclick="saveProfile()">Save</button>
+      <button class="btn-ghost" onclick="cancelForm()">Cancel</button>
     </div>
+    <div id="form-msg"></div>
+  </div>
 
-    <!-- Add account panel -->
-    <div id="add-panel" class="hidden">
-      <h2>Add Account</h2>
-      <label>Label</label>
-      <input id="new-label" type="text" placeholder="e.g. Team Account 1" />
-      <label>Email</label>
-      <input id="new-email" type="text" placeholder="example@gmail.com" />
-      <button id="btn-create" class="primary">Create Account</button>
-    </div>
-  </main>
+</div>
 
-  <script type="module" src="/src/main.js"></script>
+<script src="/src/main.js"></script>
 </body>
 </html>
