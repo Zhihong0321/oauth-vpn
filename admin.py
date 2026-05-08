@@ -162,16 +162,19 @@ def myip():
 
 @app.get("/api/check-session")
 def check_session():
-    """Actually tests if stored cookies are accepted by Google. Returns real login status."""
+    """Tests cookies via mitmproxy (port 8888) — same exit IP as user traffic."""
     import requests as req
     cookies = cookie_manager.get_cookies()
     if not cookies:
         return JSONResponse({"logged_in": False, "reason": "no_cookies"})
     try:
+        # Route through mitmproxy so Google sees the same IP (136.110.48.50) as user traffic
         r = req.get(
             "https://gemini.google.com/app",
             cookies=cookies,
             headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36"},
+            proxies={"https": "http://127.0.0.1:8888", "http": "http://127.0.0.1:8888"},
+            verify=False,
             timeout=10,
             allow_redirects=True,
         )
