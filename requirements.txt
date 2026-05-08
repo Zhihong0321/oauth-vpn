@@ -2,3 +2,4 @@ mitmproxy==10.3.1
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
 requests==2.31.0
+curl_cffi==0.7.3

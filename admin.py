@@ -162,21 +162,21 @@ def myip():
 
 @app.get("/api/check-session")
 def check_session():
-    """Tests cookies via mitmproxy (port 8888) — same exit IP as user traffic."""
-    import requests as req
+    """Tests cookies using Chrome TLS fingerprint via curl_cffi — same as real browser."""
+    from curl_cffi import requests as cffi_req
     cookies = cookie_manager.get_cookies()
     if not cookies:
         return JSONResponse({"logged_in": False, "reason": "no_cookies"})
     try:
-        # Route through mitmproxy so Google sees the same IP (136.110.48.50) as user traffic
-        r = req.get(
+        # impersonate="chrome120" replicates Chrome's exact TLS fingerprint
+        # Route through mitmproxy so exit IP matches user traffic
+        r = cffi_req.get(
             "https://gemini.google.com/app",
             cookies=cookies,
-            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36"},
-            proxies={"https": "http://127.0.0.1:8888", "http": "http://127.0.0.1:8888"},
+            proxies={"https": "http://127.0.0.1:8888"},
             verify=False,
-            timeout=10,
-            allow_redirects=True,
+            timeout=15,
+            impersonate="chrome120",
         )
         logged_in = "Sign in" not in r.text and r.status_code == 200
         return JSONResponse({"logged_in": logged_in, "reason": "ok" if logged_in else "cookies_rejected_by_google"})
