@@ -153,6 +153,13 @@ def status():
     return JSONResponse(cookie_manager.get_status())
 
 
+@app.get("/api/myip")
+def myip():
+    import requests as req
+    ip = req.get("https://api.ipify.org", timeout=5).text
+    return Response(content=ip, media_type="text/plain")
+
+
 @app.get("/api/check-session")
 def check_session():
     """Actually tests if stored cookies are accepted by Google. Returns real login status."""
