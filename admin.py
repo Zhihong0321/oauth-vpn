@@ -16,10 +16,12 @@ from typing import Optional
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.middleware.cors import CORSMiddleware
 
 import cookie_manager
 
 app = FastAPI(title="GemShare Admin", docs_url=None, redoc_url=None)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 CERT_PATHS = [
     Path.home() / ".mitmproxy" / "mitmproxy-ca-cert.pem",
