@@ -153,6 +153,15 @@ def status():
     return JSONResponse(cookie_manager.get_status())
 
 
+@app.get("/log")
+def get_log():
+    """Live log — readable directly by Claude or anyone debugging."""
+    from pathlib import Path
+    log_file = Path("/tmp/gemshare.log")
+    content = log_file.read_text() if log_file.exists() else "No log yet."
+    return Response(content=content, media_type="text/plain")
+
+
 @app.get("/proxy.pac", response_class=Response)
 def proxy_pac():
     """PAC file — only routes *.google.com through the proxy. Everything else direct."""
