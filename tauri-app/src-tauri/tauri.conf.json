@@ -37,7 +37,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "PLACEHOLDER_REPLACE_WITH_GENERATED_PUBKEY",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ2QUY5NTgxNzU0OUQ2MjIKUldRaTFrbDFnWld2UmxET3MxemVVUFF1MkNVSHpra1RxMVlWQmEyemNsZ1Azd1Q2WGhoNnMwb0EK",
       "endpoints": [
         "https://github.com/Zhihong0321/oauth-vpn/releases/latest/download/latest.json"
       ],
