@@ -141,6 +141,24 @@ const PROXY_PORT: &str = "25307";
 const REG_PATH: &str = r"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
 
 #[tauri::command]
+fn get_cert_status() -> bool {
+    let script = r#"
+$store = New-Object System.Security.Cryptography.X509Certificates.X509Store('Root','CurrentUser')
+$store.Open('ReadOnly')
+$found = $store.Certificates | Where-Object { $_.Subject -match 'mitmproxy' }
+$store.Close()
+if ($found) { Write-Host 'CERT_FOUND' } else { Write-Host 'CERT_MISSING' }
+"#;
+    let out = std::process::Command::new("powershell")
+        .args(["-ExecutionPolicy", "Bypass", "-Command", script])
+        .output();
+    match out {
+        Ok(o) => String::from_utf8_lossy(&o.stdout).contains("CERT_FOUND"),
+        Err(_) => false,
+    }
+}
+
+#[tauri::command]
 fn get_proxy_status() -> bool {
     use winreg::{enums::HKEY_CURRENT_USER, RegKey};
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
@@ -237,6 +255,7 @@ pub fn run() {
             set_active_account,
             delete_account,
             get_proxy_status,
+            get_cert_status,
             enable_proxy,
             disable_proxy,
             install_cert,

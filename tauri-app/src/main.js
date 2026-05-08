@@ -32,6 +32,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     addLog('User mode — proxy only, no cookie management', 'info');
   }
   checkHub();
+  checkCert();
 });
 
 async function reload() {
@@ -109,7 +110,8 @@ window.connectProfile = async function(id) {
   try {
     await invoke('install_cert', { hubUrl: appData.hub_url });
     addLog('CA certificate installed', 'ok');
-  } catch (e) { addLog('Cert install skipped (already installed)', 'info'); }
+  } catch (e) { addLog(`Cert install failed: ${e}`, 'err'); }
+  await checkCert();
 
   try {
     await invoke('enable_proxy');
@@ -159,6 +161,25 @@ async function checkHub() {
   } catch (_) {
     setHubPill('red', 'Hub unreachable');
   }
+}
+
+async function checkCert() {
+  try {
+    const installed = await invoke('get_cert_status');
+    if (installed) {
+      setCertPill('green', 'Cert ✅ trusted');
+    } else {
+      setCertPill('red', '⚠ Cert NOT installed — click Connect');
+    }
+  } catch (_) {
+    setCertPill('grey', 'Cert unknown');
+  }
+}
+
+function setCertPill(color, text) {
+  const el = document.getElementById('cert-pill');
+  el.className = `pill ${color}`;
+  el.textContent = text;
 }
 
 function setHubPill(color, text) {
