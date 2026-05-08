@@ -15,7 +15,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-COOKIE_FILE = Path("/tmp/gemshare_cookies.json")
+COOKIE_FILE = Path("/storage/gemshare_cookies.json")
 
 OAUTH_CLIENTS = [
     ("407408718192.apps.googleusercontent.com", "AI39si-gFh59Q9c29QiPgx8mKQKPia5qL14"),
