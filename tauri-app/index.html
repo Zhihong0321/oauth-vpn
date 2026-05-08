@@ -9,12 +9,56 @@
 
 <header>
   <span class="logo">GemShare</span>
-  <div id="hub-pill" class="pill grey">Hub checking…</div>
-  <div id="cert-pill" class="pill grey">Cert checking…</div>
   <span id="app-version" class="version">v0.1.0</span>
 </header>
 
 <div id="main">
+
+  <!-- Status checklist — every real check, no hiding -->
+  <div id="status-panel">
+    <div class="status-title">Connection Status</div>
+
+    <div class="status-row" id="s-cert">
+      <span class="s-icon">⏳</span>
+      <div class="s-body">
+        <span class="s-label">CA Certificate</span>
+        <span class="s-detail">Checking Windows cert store…</span>
+      </div>
+      <button class="s-fix hidden" id="fix-cert">Install</button>
+    </div>
+
+    <div class="status-row" id="s-proxy">
+      <span class="s-icon">⏳</span>
+      <div class="s-body">
+        <span class="s-label">System Proxy</span>
+        <span class="s-detail">Checking registry…</span>
+      </div>
+      <button class="s-fix hidden" id="fix-proxy">Enable</button>
+    </div>
+
+    <div class="status-row" id="s-cookies">
+      <span class="s-icon">⏳</span>
+      <div class="s-body">
+        <span class="s-label">Hub Cookies</span>
+        <span class="s-detail">Checking hub…</span>
+      </div>
+      <button class="s-fix hidden" id="fix-cookies">Upload</button>
+    </div>
+
+    <div class="status-row" id="s-login">
+      <span class="s-icon">⏳</span>
+      <div class="s-body">
+        <span class="s-label">Google Login (from your machine)</span>
+        <span class="s-detail">Waiting for cert + proxy first…</span>
+      </div>
+      <button class="s-fix hidden" id="fix-login">Re-auth</button>
+    </div>
+
+    <div id="connect-bar">
+      <button id="btn-connect-all" class="btn-primary" onclick="connectAll()">Connect Everything</button>
+      <button id="btn-recheck" class="btn-ghost" onclick="recheckAll()">↻ Recheck</button>
+    </div>
+  </div>
 
   <!-- Profile cards -->
   <div id="cards-section">

@@ -1,192 +1,209 @@
 const invoke = window.__TAURI__.core.invoke;
 
 let appData = { accounts: [], active_account_id: null, hub_url: '' };
-let cardStatus = {}; // id → 'idle' | 'checking' | 'verified' | 'rejected'
 let editingId = null;
 
-function setCardStatus(id, status) {
-  cardStatus[id] = status;
-  renderCards();
-}
-
-// mode: 'admin' = manages cookies | 'user' = just connects proxy
-const IS_ADMIN = true; // set false when distributing to team members
+// ── Status state — tracks real values, never fakes ───────────────────────────
+const status = { cert: null, proxy: null, cookies: 0, login: null };
 
 window.addEventListener('DOMContentLoaded', async () => {
-  await reload();
+  appData = await invoke('get_accounts');
+  renderCards();
+  await recheckAll();
 
-  // Show/hide admin controls based on mode
-  document.querySelectorAll('.admin-only').forEach(el => {
-    el.style.display = IS_ADMIN ? '' : 'none';
-  });
-
-  if (IS_ADMIN && appData.active_account_id) {
-    try {
-      await invoke('set_active_account', { accountId: appData.active_account_id });
-      addLog('Cookies synced to Hub', 'ok');
-    } catch (e) {
-      addLog(`Sync failed: ${e}`, 'err');
-    }
-    await verifySession(appData.active_account_id);
-  } else if (!IS_ADMIN) {
-    addLog('User mode — proxy only, no cookie management', 'info');
-  }
-  checkHub();
-  checkCert();
+  document.getElementById('fix-cert').onclick   = () => fixCert();
+  document.getElementById('fix-proxy').onclick  = () => fixProxy();
+  document.getElementById('fix-cookies').onclick = () => showAddForm();
+  document.getElementById('fix-login').onclick  = () => reauthFlow();
 });
 
+// ── Recheck everything ────────────────────────────────────────────────────────
+window.recheckAll = async function() {
+  setRow('cert',    'checking', 'Checking Windows cert store…');
+  setRow('proxy',   'checking', 'Checking registry…');
+  setRow('cookies', 'checking', 'Checking hub…');
+  setRow('login',   'checking', 'Waiting…');
+
+  await checkCert();
+  await checkProxy();
+  await checkCookies();
+
+  // Only run login check if cert + proxy + cookies are all good
+  if (status.cert && status.proxy && status.cookies > 0) {
+    await checkLogin();
+  } else {
+    const missing = [];
+    if (!status.cert)        missing.push('cert not installed');
+    if (!status.proxy)       missing.push('proxy not active');
+    if (status.cookies === 0) missing.push('no cookies in hub');
+    setRow('login', 'err', `Cannot check — fix above first: ${missing.join(', ')}`);
+  }
+};
+
+async function checkCert() {
+  try {
+    const ok = await invoke('get_cert_status');
+    status.cert = ok;
+    if (ok) {
+      setRow('cert', 'ok', 'Installed in Windows trusted root store');
+      hide('fix-cert');
+    } else {
+      setRow('cert', 'err', '❌ NOT installed — Chrome cannot HTTPS through proxy without this');
+      show('fix-cert');
+    }
+  } catch (e) {
+    status.cert = false;
+    setRow('cert', 'err', `❌ Check failed: ${e}`);
+    show('fix-cert');
+  }
+}
+
+async function checkProxy() {
+  try {
+    const ok = await invoke('get_proxy_status');
+    status.proxy = ok;
+    if (ok) {
+      setRow('proxy', 'ok', 'Active → tramway.proxy.rlwy.net:25307');
+      hide('fix-proxy');
+    } else {
+      setRow('proxy', 'err', '❌ Disabled — traffic not going through mitmproxy');
+      show('fix-proxy');
+    }
+  } catch (e) {
+    status.proxy = false;
+    setRow('proxy', 'err', `❌ Check failed: ${e}`);
+    show('fix-proxy');
+  }
+}
+
+async function checkCookies() {
+  try {
+    const r = await fetch(appData.hub_url + '/status');
+    const s = await r.json();
+    status.cookies = s.cookie_count || 0;
+    if (s.ok && status.cookies > 0) {
+      setRow('cookies', 'ok', `${status.cookies} cookies in hub (source: ${s.source})`);
+      hide('fix-cookies');
+    } else {
+      setRow('cookies', 'err', '❌ No cookies in hub — upload via Edit profile');
+      show('fix-cookies');
+    }
+  } catch (e) {
+    status.cookies = 0;
+    setRow('cookies', 'err', `❌ Hub unreachable: ${e}`);
+    show('fix-cookies');
+  }
+}
+
+async function checkLogin() {
+  setRow('login', 'checking', 'Testing through proxy from YOUR machine (takes ~10s)…');
+  try {
+    const result = await invoke('test_connection');
+    status.login = result === 'LOGGED_IN';
+    if (result === 'LOGGED_IN') {
+      setRow('login', 'ok', '✅ Google confirmed — your machine is logged in through the proxy');
+      hide('fix-login');
+    } else if (result.startsWith('NOT_LOGGED_IN:')) {
+      const url = result.replace('NOT_LOGGED_IN:', '');
+      setRow('login', 'err', `❌ Cookies rejected by Google — redirected to: ${url}`);
+      show('fix-login');
+    } else {
+      // ERROR:... — usually cert not trusted or proxy not reachable
+      const msg = result.replace('ERROR:', '');
+      setRow('login', 'err', `❌ Connection failed: ${msg}`);
+      show('fix-login');
+    }
+  } catch (e) {
+    status.login = false;
+    setRow('login', 'err', `❌ Test failed: ${e}`);
+    show('fix-login');
+  }
+}
+
+// ── Fix actions ───────────────────────────────────────────────────────────────
+window.connectAll = async function() {
+  addLog('Starting full connect sequence…', 'info');
+  await fixCert();
+  await fixProxy();
+  // recheck cookies — can't fix automatically, user must upload
+  await checkCookies();
+  if (status.cert && status.proxy && status.cookies > 0) {
+    await checkLogin();
+  }
+};
+
+async function fixCert() {
+  setRow('cert', 'checking', 'Installing certificate…');
+  try {
+    await invoke('install_cert', { hubUrl: appData.hub_url });
+    addLog('CA certificate installed', 'ok');
+    await checkCert();
+  } catch (e) {
+    setRow('cert', 'err', `❌ Install failed: ${e}`);
+    addLog(`Cert install failed: ${e}`, 'err');
+  }
+}
+
+async function fixProxy() {
+  setRow('proxy', 'checking', 'Enabling proxy…');
+  try {
+    await invoke('enable_proxy');
+    addLog('Proxy enabled', 'ok');
+    await checkProxy();
+  } catch (e) {
+    setRow('proxy', 'err', `❌ Failed: ${e}`);
+    addLog(`Proxy failed: ${e}`, 'err');
+  }
+}
+
+window.reauthFlow = async function() {
+  addLog('Opening browser for re-authentication…', 'info');
+  addLog('Sign in → Cookie-Editor → Export as JSON → Edit profile → Save', 'warn');
+  window.open('https://gemini.google.com/app', '_blank');
+};
+
+// ── Profile cards ─────────────────────────────────────────────────────────────
 async function reload() {
   appData = await invoke('get_accounts');
   renderCards();
 }
 
-// ── Render profile cards ──────────────────────────────────────────────────────
 function renderCards() {
   const list = document.getElementById('card-list');
   if (!appData.accounts.length) {
     list.innerHTML = '<div class="empty-state">No profiles yet — click + Add Profile to get started.</div>';
     return;
   }
-
   list.innerHTML = appData.accounts.map(acct => {
-    const s = cardStatus[acct.id] || 'idle';
     const cookieCount = acct.cookies?.length ?? 0;
-
-    // dot and health text ONLY reflect verified state — never lies
-    const dotClass = {
-      verified: 'connected',
-      checking: 'checking',
-      rejected: 'no-cookie',
-      idle:     cookieCount > 0 ? 'healthy' : 'no-cookie',
-    }[s];
-
-    const healthText = {
-      verified: '✅ Logged in — Google confirmed',
-      checking: '⏳ Verifying with Google…',
-      rejected: '❌ Cookies rejected — click Re-authenticate',
-      idle:     cookieCount > 0 ? `${cookieCount} cookies ready — click Connect` : '⚠ No cookies — edit to add',
-    }[s];
-
-    const healthClass = {
-      verified: 'ok',
-      checking: 'warn',
-      rejected: 'bad',
-      idle:     cookieCount > 0 ? 'info' : 'bad',
-    }[s];
-
-    const connectBtn = (s === 'verified' || s === 'checking')
-      ? `<button class="btn-connect disconnect" onclick="disconnect('${acct.id}')">Disconnect</button>`
-      : s === 'rejected'
-        ? `<button class="btn-connect reauth" onclick="reauthProfile('${acct.id}')">🔑 Re-authenticate</button>`
-        : `<button class="btn-connect" onclick="connectProfile('${acct.id}')">Connect</button>`;
-
+    const isActive = acct.id === appData.active_account_id;
     return `
-    <div class="profile-card ${s === 'verified' ? 'connected' : ''}" id="card-${acct.id}">
-      <div class="card-dot ${dotClass}"></div>
+    <div class="profile-card ${isActive ? 'active' : ''}" id="card-${acct.id}">
       <div class="card-info">
         <div class="card-label">${esc(acct.label)}</div>
         <div class="card-email">${esc(acct.email)}</div>
-        <div class="card-health ${healthClass}">${healthText}</div>
+        <div class="card-cookies">${cookieCount > 0 ? `${cookieCount} cookies stored` : '⚠ No cookies'}</div>
       </div>
       <div class="card-actions">
-        ${connectBtn}
-        ${IS_ADMIN ? `<button class="btn-icon" onclick="editProfile('${acct.id}')">Edit</button>` : ''}
-        ${IS_ADMIN ? `<button class="btn-icon del" onclick="deleteProfile('${acct.id}')">✕</button>` : ''}
+        <button class="btn-icon" onclick="activateProfile('${acct.id}')">${isActive ? '✅ Active' : 'Set Active'}</button>
+        <button class="btn-icon" onclick="editProfile('${acct.id}')">Edit</button>
+        <button class="btn-icon del" onclick="deleteProfile('${acct.id}')">✕</button>
       </div>
     </div>`;
   }).join('');
 }
 
-// ── Connect / Disconnect ──────────────────────────────────────────────────────
-window.connectProfile = async function(id) {
-  const acct = appData.accounts.find(a => a.id === id);
-  if (!acct) return;
-
-  // Instant UI feedback — no waiting
-  const btn = document.querySelector(`#card-${id} .btn-connect`);
-  if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
-  setHubPill('grey', 'Connecting…');
-
+window.activateProfile = async function(id) {
   try {
-    await invoke('install_cert', { hubUrl: appData.hub_url });
-    addLog('CA certificate installed', 'ok');
-  } catch (e) { addLog(`Cert install failed: ${e}`, 'err'); }
-  await checkCert();
-
-  try {
-    await invoke('enable_proxy');
-    addLog(`Proxy enabled → tramway.proxy.rlwy.net:25307`, 'ok');
+    await invoke('set_active_account', { accountId: id });
+    addLog('Profile activated — cookies synced to hub', 'ok');
+    await reload();
+    await checkCookies();
+    if (status.cert && status.proxy) await checkLogin();
   } catch (e) {
-    addLog(`Proxy failed: ${e}`, 'err');
-    return;
-  }
-
-  appData.active_account_id = id;
-  renderCards();
-
-  try {
-    if (IS_ADMIN) {
-      // Admin only: push cookies to Hub
-      await invoke('set_active_account', { accountId: id });
-      addLog(`Cookies synced to Hub — ${acct.cookies?.length ?? 0} cookies`, 'ok');
-    } else {
-      addLog('User mode — using existing Hub cookies', 'info');
-    }
-    await verifySession(id);
-  } catch (e) {
-    addLog(`Error: ${e}`, 'err');
-    setHubPill('yellow', '⚠ Proxy on, Hub sync failed');
+    addLog(`Activate failed: ${e}`, 'err');
   }
 };
-
-window.disconnect = async function(id) {
-  await invoke('disable_proxy');
-  appData.active_account_id = null;
-  if (id) setCardStatus(id, 'idle');
-  else { cardStatus = {}; renderCards(); }
-  setHubPill('grey', 'Disconnected');
-  addLog('Proxy disabled', 'warn');
-};
-
-// ── Hub status ────────────────────────────────────────────────────────────────
-async function checkHub() {
-  try {
-    const r = await fetch(appData.hub_url + '/status');
-    const s = await r.json();
-    if (s.ok) {
-      setHubPill('green', `Hub ✅ ${s.cookie_count} cookies`);
-    } else {
-      setHubPill('yellow', 'Hub online — no cookies');
-    }
-  } catch (_) {
-    setHubPill('red', 'Hub unreachable');
-  }
-}
-
-async function checkCert() {
-  try {
-    const installed = await invoke('get_cert_status');
-    if (installed) {
-      setCertPill('green', 'Cert ✅ trusted');
-    } else {
-      setCertPill('red', '⚠ Cert NOT installed — click Connect');
-    }
-  } catch (_) {
-    setCertPill('grey', 'Cert unknown');
-  }
-}
-
-function setCertPill(color, text) {
-  const el = document.getElementById('cert-pill');
-  el.className = `pill ${color}`;
-  el.textContent = text;
-}
-
-function setHubPill(color, text) {
-  const el = document.getElementById('hub-pill');
-  el.className = `pill ${color}`;
-  el.textContent = text;
-}
 
 // ── Add / Edit form ───────────────────────────────────────────────────────────
 window.showAddForm = function() {
@@ -241,6 +258,7 @@ window.saveProfile = async function() {
       msgEl.textContent = '✅ Profile saved';
     }
     await reload();
+    await checkCookies();
     setTimeout(hideForm, 800);
   } catch (e) {
     msgEl.style.color = '#e74c3c';
@@ -248,52 +266,25 @@ window.saveProfile = async function() {
   }
 };
 
-async function verifySession(id) {
-  setCardStatus(id, 'checking');
-  setHubPill('yellow', '⏳ Asking Google…');
-  addLog('Verifying with Google — waiting for real answer…', 'info');
-  try {
-    const r = await fetch(appData.hub_url + '/api/check-session');
-    const result = await r.json();
-    if (result.logged_in) {
-      setCardStatus(id, 'verified');
-      setHubPill('green', '✅ Logged in');
-      addLog('✅ REAL GREEN — Google confirmed login', 'ok');
-    } else {
-      setCardStatus(id, 'rejected');
-      setHubPill('red', '❌ Cookies rejected');
-      addLog('❌ Google rejected cookies — need re-authenticate', 'err');
-      addLog('Proxy is ON → open Chrome → gemini.google.com → Sign in → Cookie-Editor Export → Edit → Save', 'warn');
-    }
-  } catch (e) {
-    setCardStatus(id, 'idle');
-    setHubPill('yellow', '⚠ Could not verify');
-    addLog(`Verification failed: ${e}`, 'warn');
-  }
-}
-
-function showReauthButton(id) {
-  const card = document.getElementById(`card-${id}`);
-  if (!card || card.querySelector('.btn-reauth')) return;
-  const btn = document.createElement('button');
-  btn.className = 'btn-reauth';
-  btn.textContent = '🔑 Re-authenticate';
-  btn.onclick = () => reauthProfile(id);
-  card.querySelector('.card-actions').prepend(btn);
-}
-
-window.reauthProfile = function(id) {
-  // Open browser to Gemini WITH proxy active — user signs in from Railway IP
-  // This creates cookies bound to Railway's IP which will work permanently
-  addLog('Opening browser → sign in → Cookie-Editor Export → paste into Edit', 'warn');
-  window.open('https://gemini.google.com/app', '_blank');
-};
-
 window.deleteProfile = async function(id) {
   if (!confirm('Delete this profile?')) return;
   await invoke('delete_account', { accountId: id });
   await reload();
 };
+
+// ── Status row helpers ────────────────────────────────────────────────────────
+function setRow(key, state, detail) {
+  const row = document.getElementById(`s-${key}`);
+  if (!row) return;
+  const icons = { ok: '✅', err: '❌', checking: '⏳', warn: '⚠️' };
+  row.querySelector('.s-icon').textContent = icons[state] || '⏳';
+  row.querySelector('.s-detail').textContent = detail;
+  row.className = `status-row ${state}`;
+  if (state === 'ok' || state === 'err') addLog(`[${key}] ${detail}`, state === 'ok' ? 'ok' : 'err');
+}
+
+function show(id) { document.getElementById(id)?.classList.remove('hidden'); }
+function hide(id) { document.getElementById(id)?.classList.add('hidden'); }
 
 // ── Log panel ─────────────────────────────────────────────────────────────────
 function addLog(msg, type = 'info') {

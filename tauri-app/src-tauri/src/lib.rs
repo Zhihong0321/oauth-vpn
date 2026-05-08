@@ -243,6 +243,31 @@ try {{
     Ok(())
 }
 
+// Tests the full chain FROM THIS MACHINE: proxy → mitmproxy → Google
+// Uses WinHTTP (PowerShell) which respects Windows proxy + cert store.
+// Returns "LOGGED_IN", "NOT_LOGGED_IN:<url>", or "ERROR:<msg>"
+#[tauri::command]
+fn test_connection() -> String {
+    let script = r#"
+try {
+    $r = Invoke-WebRequest 'https://myaccount.google.com/' -UseBasicParsing -MaximumRedirection 10 -TimeoutSec 15
+    $final = $r.BaseResponse.ResponseUri.ToString()
+    if ($final -match 'myaccount\.google\.com') {
+        Write-Host 'LOGGED_IN'
+    } else {
+        Write-Host "NOT_LOGGED_IN:$final"
+    }
+} catch {
+    Write-Host "ERROR:$($_.Exception.Message)"
+}
+"#;
+    std::process::Command::new("powershell")
+        .args(["-ExecutionPolicy", "Bypass", "-Command", script])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_else(|e| format!("ERROR:{}", e))
+}
+
 // ── App entry ─────────────────────────────────────────────────────────────────
 
 pub fn run() {
@@ -256,6 +281,7 @@ pub fn run() {
             delete_account,
             get_proxy_status,
             get_cert_status,
+            test_connection,
             enable_proxy,
             disable_proxy,
             install_cert,

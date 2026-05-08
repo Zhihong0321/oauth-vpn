@@ -210,6 +210,65 @@ textarea { height: 120px; resize: vertical; }
 
 .empty-state { color: #333; font-size: .88em; padding: 20px 0; }
 
+/* ── Status panel ───────────────────────── */
+#status-panel {
+  background: #111;
+  border: 1px solid #1e1e1e;
+  border-radius: 12px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.status-title {
+  font-size: .7em;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: #444;
+  margin-bottom: 14px;
+}
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #181818;
+}
+.status-row:last-of-type { border-bottom: none; }
+.s-icon { font-size: 1.1em; flex-shrink: 0; width: 22px; text-align: center; }
+.s-body { flex: 1; min-width: 0; }
+.s-label { font-size: .85em; font-weight: 600; color: #ccc; display: block; }
+.s-detail { font-size: .75em; color: #555; display: block; margin-top: 2px; word-break: break-all; }
+.status-row.ok   .s-label { color: #2ecc71; }
+.status-row.err  .s-label { color: #e74c3c; }
+.status-row.ok   .s-detail { color: #1a5c35; }
+.status-row.err  .s-detail { color: #7a2a2a; }
+.s-fix {
+  padding: 5px 12px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  color: #aaa;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: .78em;
+  font-family: inherit;
+  flex-shrink: 0;
+}
+.s-fix:hover { background: #1a73e8; color: white; border-color: #1a73e8; }
+#connect-bar {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #1a1a1a;
+}
+
+/* Profile card (updated — no dot, simpler) */
+.profile-card { flex-direction: column; align-items: flex-start; }
+.profile-card.active { border-color: #1a73e8; background: #0d1525; }
+.card-cookies { font-size: .75em; color: #555; margin-top: 3px; }
+.card-actions { margin-top: 10px; }
+
 /* ── Log panel ──────────────────────────── */
 #log-panel {
   background: #0a0a0a;
