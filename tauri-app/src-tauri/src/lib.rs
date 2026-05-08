@@ -136,7 +136,8 @@ fn sync_cookies_to_hub(hub_url: &str, cookies: &[serde_json::Value]) -> Result<(
 
 // ── Proxy management ──────────────────────────────────────────────────────────
 
-const PAC_URL: &str = "https://oauth-vpn-production.up.railway.app/proxy.pac";
+const PROXY_HOST: &str = "tramway.proxy.rlwy.net";
+const PROXY_PORT: &str = "25307";
 const REG_PATH: &str = r"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
 
 #[tauri::command]
@@ -144,24 +145,25 @@ fn get_proxy_status() -> bool {
     use winreg::{enums::HKEY_CURRENT_USER, RegKey};
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     if let Ok(k) = hkcu.open_subkey(REG_PATH) {
-        let pac: String = k.get_value("AutoConfigURL").unwrap_or_default();
-        return pac.contains("railway.app");
+        let enabled: u32 = k.get_value("ProxyEnable").unwrap_or(0);
+        let server: String = k.get_value("ProxyServer").unwrap_or_default();
+        return enabled == 1 && server.contains("rlwy.net");
     }
     false
 }
 
 #[tauri::command]
 fn enable_proxy() -> Result<(), String> {
-    // Use PAC file — only Google traffic goes through proxy, everything else direct.
-    // This prevents slowdowns for non-Google browsing.
     use winreg::{enums::*, RegKey};
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let k = hkcu
         .open_subkey_with_flags(REG_PATH, KEY_WRITE)
         .map_err(|e| e.to_string())?;
-    k.set_value("AutoConfigURL", &PAC_URL).map_err(|e| e.to_string())?;
-    // Disable manual proxy (PAC takes over)
-    k.set_value("ProxyEnable", &0u32).map_err(|e| e.to_string())?;
+    k.set_value("ProxyEnable", &1u32).map_err(|e| e.to_string())?;
+    k.set_value("ProxyServer", &format!("{}:{}", PROXY_HOST, PROXY_PORT))
+        .map_err(|e| e.to_string())?;
+    k.set_value("ProxyOverride", &"localhost;127.0.0.1;<local>")
+        .map_err(|e| e.to_string())?;
     refresh_wininet();
     Ok(())
 }
@@ -173,7 +175,6 @@ fn disable_proxy() -> Result<(), String> {
     let k = hkcu
         .open_subkey_with_flags(REG_PATH, KEY_WRITE)
         .map_err(|e| e.to_string())?;
-    k.set_value("AutoConfigURL", &"").map_err(|e| e.to_string())?;
     k.set_value("ProxyEnable", &0u32).map_err(|e| e.to_string())?;
     refresh_wininet();
     Ok(())
@@ -192,14 +193,34 @@ fn refresh_wininet() {
 #[tauri::command]
 fn install_cert(hub_url: String) -> Result<(), String> {
     disable_proxy().ok();
+    // Use CurrentUser store — no admin rights needed, Chrome trusts it
     let script = format!(
-        r#"try{{$b=(Invoke-WebRequest '{}/cert' -UseBasicParsing -NoProxy).Content;$c=New-Object System.Security.Cryptography.X509Certificates.X509Certificate2(,$b);$s=New-Object System.Security.Cryptography.X509Certificates.X509Store('Root','LocalMachine');$s.Open('ReadWrite');$s.Add($c);$s.Close()}}catch{{Write-Host $_.Exception.Message}}"#,
+        r#"
+$ErrorActionPreference = 'Stop'
+try {{
+    $pem = (Invoke-WebRequest '{}/cert' -UseBasicParsing).Content
+    $b64 = ($pem -replace '-----BEGIN CERTIFICATE-----','') -replace '-----END CERTIFICATE-----','' -replace '\s',''
+    $der = [Convert]::FromBase64String($b64)
+    $c = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2(,$der)
+    $s = New-Object System.Security.Cryptography.X509Certificates.X509Store('Root','CurrentUser')
+    $s.Open('ReadWrite')
+    $s.Add($c)
+    $s.Close()
+    Write-Host "CERT_OK"
+}} catch {{
+    Write-Host "CERT_FAIL: $($_.Exception.Message)"
+}}
+"#,
         hub_url
     );
-    std::process::Command::new("powershell")
+    let out = std::process::Command::new("powershell")
         .args(["-ExecutionPolicy", "Bypass", "-Command", &script])
         .output()
         .map_err(|e| e.to_string())?;
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    if stdout.contains("CERT_FAIL") {
+        return Err(format!("Cert install failed: {}", stdout));
+    }
     Ok(())
 }
 
