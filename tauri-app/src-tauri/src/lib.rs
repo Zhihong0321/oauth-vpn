@@ -138,7 +138,6 @@ fn sync_cookies_to_hub(hub_url: &str, cookies: &[serde_json::Value]) -> Result<(
 
 const PROXY_HOST: &str = "tramway.proxy.rlwy.net";
 const PROXY_PORT: &str = "25307";
-const REG_PATH: &str = r"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
 
 #[tauri::command]
 fn get_cert_status() -> bool {
@@ -160,14 +159,42 @@ if ($found) { Write-Host 'CERT_FOUND' } else { Write-Host 'CERT_MISSING' }
 
 #[tauri::command]
 fn get_proxy_status() -> bool {
-    use winreg::{enums::HKEY_CURRENT_USER, RegKey};
-    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    if let Ok(k) = hkcu.open_subkey(REG_PATH) {
-        let enabled: u32 = k.get_value("ProxyEnable").unwrap_or(0);
-        let server: String = k.get_value("ProxyServer").unwrap_or_default();
-        return enabled == 1 && server.contains("rlwy.net");
+    // Use PowerShell to read the actual system proxy state, checking both
+    // the registry values and the DefaultConnectionSettings blob.
+    let script = r#"
+$regIE = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings"
+$regConn = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Connections"
+
+$enabled = (Get-ItemProperty $regIE -EA SilentlyContinue).ProxyEnable
+$server = (Get-ItemProperty $regIE -EA SilentlyContinue).ProxyServer
+
+# Check registry values
+if ($enabled -ne 1 -or -not $server -or $server -notmatch 'rlwy\.net') {
+    Write-Host 'PROXY_OFF'
+    exit
+}
+
+# Also verify the DefaultConnectionSettings blob has manual proxy flag (bit 0x02)
+$blob = (Get-ItemProperty $regConn -EA SilentlyContinue).DefaultConnectionSettings
+if ($blob -and $blob.Count -ge 9) {
+    $flags = $blob[8]
+    if ($flags -band 0x02) {
+        Write-Host 'PROXY_ON'
+    } else {
+        Write-Host 'PROXY_OFF'
     }
-    false
+} else {
+    # No blob — trust the registry values
+    Write-Host 'PROXY_ON'
+}
+"#;
+    let out = std::process::Command::new("powershell")
+        .args(["-ExecutionPolicy", "Bypass", "-Command", script])
+        .output();
+    match out {
+        Ok(o) => String::from_utf8_lossy(&o.stdout).contains("PROXY_ON"),
+        Err(_) => false,
+    }
 }
 
 #[tauri::command]
@@ -181,7 +208,7 @@ $pb = [Text.Encoding]::ASCII.GetBytes($proxy)
 $bb = [Text.Encoding]::ASCII.GetBytes($bypass)
 $cur = (Get-ItemProperty $regConn -EA SilentlyContinue).DefaultConnectionSettings
 $cnt = if ($cur -and $cur.Count -ge 8) {{ [BitConverter]::ToUInt32($cur, 4) + 1 }} else {{ 1 }}
-$blob = [byte[]]@(0x46,0,0,0) + [BitConverter]::GetBytes([uint32]$cnt) + [byte[]]@(0x05) + [BitConverter]::GetBytes([uint32]$pb.Length) + $pb + [BitConverter]::GetBytes([uint32]$bb.Length) + $bb + [byte[]]@(0,0,0,0)
+$blob = [byte[]]@(0x46,0,0,0) + [BitConverter]::GetBytes([uint32]$cnt) + [byte[]]@(0x03) + [BitConverter]::GetBytes([uint32]$pb.Length) + $pb + [BitConverter]::GetBytes([uint32]$bb.Length) + $bb + [byte[]]@(0,0,0,0)
 Set-ItemProperty $regConn "DefaultConnectionSettings" $blob
 Set-ItemProperty $regConn "SavedLegacySettings" $blob
 Set-ItemProperty $regIE "ProxyEnable" 1
@@ -224,16 +251,6 @@ $t::InternetSetOption([IntPtr]::Zero, 37, [IntPtr]::Zero, 0) | Out-Null
         .output()
         .map_err(|e| e.to_string())?;
     Ok(())
-}
-
-fn refresh_wininet() {
-    std::process::Command::new("powershell")
-        .args([
-            "-Command",
-            r#"$t=Add-Type -MemberDefinition '[DllImport("wininet.dll")] public static extern bool InternetSetOption(IntPtr h,int o,IntPtr b,int l);' -Name W -Namespace N -PassThru -ErrorAction SilentlyContinue; $t::InternetSetOption(0,39,0,0); $t::InternetSetOption(0,37,0,0)"#,
-        ])
-        .output()
-        .ok();
 }
 
 #[tauri::command]

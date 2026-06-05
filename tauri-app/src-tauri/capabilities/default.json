@@ -1,0 +1,10 @@
+{
+  "identifier": "default",
+  "description": "Default capabilities for GemShare desktop app",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:default",
+    "updater:default"
+  ]
+}

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>GemShare</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+
+<header>
+  <span class="logo">GemShare</span>
+  <span id="app-version" class="version">v0.1.1</span>
+</header>
+
+<div id="main">
+
+  <!-- Status checklist — every real check, no hiding -->
+  <div id="status-panel">
+    <div class="status-title">Connection Status</div>
+
+    <div class="status-row" id="s-cert">
+      <span class="s-icon">⏳</span>
+      <div class="s-body">
+        <span class="s-label">CA Certificate</span>
+        <span class="s-detail">Checking Windows cert store…</span>
+      </div>
+      <button class="s-fix hidden" id="fix-cert">Install</button>
+    </div>
+
+    <div class="status-row" id="s-proxy">
+      <span class="s-icon">⏳</span>
+      <div class="s-body">
+        <span class="s-label">System Proxy</span>
+        <span class="s-detail">Checking registry…</span>
+      </div>
+      <button class="s-fix hidden" id="fix-proxy">Enable</button>
+    </div>
+
+    <div class="status-row" id="s-cookies">
+      <span class="s-icon">⏳</span>
+      <div class="s-body">
+        <span class="s-label">Hub Cookies</span>
+        <span class="s-detail">Checking hub…</span>
+      </div>
+      <button class="s-fix hidden" id="fix-cookies">Upload</button>
+    </div>
+
+    <div class="status-row" id="s-login">
+      <span class="s-icon">⏳</span>
+      <div class="s-body">
+        <span class="s-label">Google Login (from your machine)</span>
+        <span class="s-detail">Waiting for cert + proxy first…</span>
+      </div>
+      <button class="s-fix hidden" id="fix-login">Re-auth</button>
+    </div>
+
+    <div id="connect-bar">
+      <button id="btn-connect-all" class="btn-primary" onclick="connectAll()">Connect Everything</button>
+      <button id="btn-recheck" class="btn-ghost" onclick="recheckAll()">↻ Recheck</button>
+    </div>
+  </div>
+
+  <!-- Profile cards -->
+  <div id="cards-section">
+    <div class="section-header">
+      <span class="section-title">Profiles</span>
+      <button class="btn-add" onclick="showAddForm()">+ Add Profile</button>
+    </div>
+    <div id="card-list"></div>
+  </div>
+
+  <!-- Live log panel -->
+  <div id="log-panel">
+    <div class="section-header" style="margin-bottom:6px">
+      <span class="section-title">Activity Log</span>
+      <button class="btn-add" style="font-size:.7em;padding:3px 8px" onclick="clearLog()">Clear</button>
+    </div>
+    <div id="log-output"></div>
+  </div>
+
+  <!-- Add / Edit form (inline) -->
+  <div id="profile-form" class="form-card hidden">
+    <div class="form-title" id="form-title">New Profile</div>
+    <label>Label</label>
+    <input id="form-label" type="text" placeholder="e.g. Team Account 1" />
+    <label>Email</label>
+    <input id="form-email" type="text" placeholder="user@gmail.com" />
+    <label>Session Cookies <span class="label-hint">— Cookie-Editor → Export as JSON</span></label>
+    <textarea id="form-cookies" placeholder="Paste JSON here…"></textarea>
+    <div class="form-actions">
+      <button class="btn-primary" onclick="saveProfile()">Save</button>
+      <button class="btn-ghost" onclick="hideForm()">Cancel</button>
+    </div>
+    <div id="form-msg"></div>
+  </div>
+
+</div>
+
+<script src="/src/main.js"></script>
+</body>
+</html>

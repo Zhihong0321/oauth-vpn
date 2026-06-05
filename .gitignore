@@ -1,0 +1,8 @@
+*.key
+*.key.pub
+*.pem
+*.crt
+*.mp3
+*.txt
+tauri-app/src-tauri/target/
+node_modules/

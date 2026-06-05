@@ -3,7 +3,7 @@
   "version": "0.1.1",
   "identifier": "com.gemshare.app",
   "build": {
-    "frontendDist": "../",
+    "frontendDist": "../dist",
     "beforeDevCommand": "",
     "beforeBuildCommand": ""
   },

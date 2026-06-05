@@ -1,15 +1,20 @@
 """
 Admin HTTP server — Railway public HTTPS URL.
 
-GET  /          dashboard
-GET  /cert      download mitmproxy CA cert
-GET  /refresh   force refresh token exchange
-POST /cookies   upload cookie JSON (Cookie-Editor export)
-GET  /status    JSON health
+GET  /            dashboard
+GET  /cert        download mitmproxy CA cert
+GET  /refresh     force refresh token exchange
+POST /cookies     upload cookie JSON (Cookie-Editor export)
+GET  /status      JSON health
+POST /webhook/whatsapp-otp   receive OTP from WhatsApp API server
+GET  /api/whatsapp-otp       poll latest WhatsApp OTP (clears after read)
+GET  /api/whatsapp-otp/stream SSE stream — fires OTP to browser instantly
 """
 
 import json
 import os
+import re
+import asyncio
 from pathlib import Path
 from typing import Optional
 
@@ -17,6 +22,7 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
+from sse_starlette.sse import EventSourceResponse
 
 import cookie_manager
 
@@ -97,6 +103,59 @@ textarea{{width:100%;height:120px;background:#1a1a1a;color:#eee;border:1px solid
 <a class="btn" href="/cert">⬇ CA Certificate {'✅' if cert_ok else '(wait…)'}</a>
 <a class="btn grey" href="/refresh">🔄 Try Refresh Token</a>
 <a class="btn grey" href="/status">📋 JSON Status</a>
+
+<h2>WhatsApp OTP</h2>
+<div class="step" id="wa-otp-box">
+  <div id="wa-otp-status" style="color:#888">⏳ Waiting for OTP via WhatsApp…</div>
+  <div id="wa-otp-from" style="margin-top:6px;color:#aaa;font-size:.85em"></div>
+  <div id="wa-otp-code" style="margin-top:8px;font-size:2em;font-weight:bold;color:#2ecc71;letter-spacing:.15em"></div>
+</div>
+<script>
+(function() {
+  const statusEl  = document.getElementById('wa-otp-status');
+  const fromEl    = document.getElementById('wa-otp-from');
+  const codeEl    = document.getElementById('wa-otp-code');
+
+  // Attempt SSE connection; fall back to polling if SSE fails
+  let es = null;
+  try {
+    es = new EventSource('/api/whatsapp-otp/stream');
+    es.addEventListener('otp', function(e) {
+      try {
+        const d = JSON.parse(e.data);
+        statusEl.textContent = '✅ OTP received';
+        statusEl.style.color = '#2ecc71';
+        fromEl.textContent = 'From: ' + (d.from || 'unknown');
+        codeEl.textContent = d.otp || '—';
+        // Copy to clipboard
+        if (d.otp) {
+          navigator.clipboard.writeText(d.otp).catch(function(){});
+        }
+      } catch(err) {}
+    });
+    es.onerror = function() {
+      es.close(); es = null;
+      pollOtp();
+    };
+  } catch(e) { pollOtp(); }
+
+  function pollOtp() {
+    setInterval(async function() {
+      try {
+        const r = await fetch('/api/whatsapp-otp');
+        const d = await r.json();
+        if (d.otp) {
+          statusEl.textContent = '✅ OTP received';
+          statusEl.style.color = '#2ecc71';
+          fromEl.textContent = 'From: ' + (d.from || 'unknown');
+          codeEl.textContent = d.otp;
+          navigator.clipboard.writeText(d.otp).catch(function(){});
+        }
+      } catch(e) {}
+    }, 4000);
+  }
+})();
+</script>
 
 <h2>Windows 11 Proxy Setup</h2>
 <ol style="line-height:2">
@@ -230,6 +289,111 @@ async def api_sync(request: Request):
         return JSONResponse({"ok": True, "cookie_count": count})
     except Exception as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+
+
+# ─── WhatsApp OTP Webhook ─────────────────────────────────────────────────────
+
+# In-memory store: one OTP at a time (cleared after read)
+_wa_otp_store: dict = {}
+_wa_otp_queue: asyncio.Queue = asyncio.Queue()
+
+# Regex patterns to auto-extract OTP codes from message text
+OTP_PATTERNS = [
+    re.compile(r'\b\d{6}\b'),          # 6-digit code (Google, etc.)
+    re.compile(r'\b\d{5}\b'),          # 5-digit code
+    re.compile(r'\b\d{4}\b'),          # 4-digit code
+    re.compile(r'[Cc]ode[:\s]*(\d+)'), # "code: 123456"
+    re.compile(r'[Oo]TP[:\s]*(\d+)'),  # "OTP: 123456"
+]
+
+def _extract_otp(message: str) -> Optional[str]:
+    """Try to pull a numeric code out of a WhatsApp message."""
+    msg = message.strip()
+    for pat in OTP_PATTERNS:
+        m = pat.search(msg)
+        if m:
+            return m.group(1) if m.lastindex else m.group(0)
+    return None
+
+
+@app.post("/webhook/whatsapp-otp")
+async def whatsapp_otp_webhook(request: Request):
+    """
+    WhatsApp API server POSTs here when a message arrives.
+
+    Expected JSON body:
+      { "from": "+1234567890", "message": "Your Google verification code is 123456." }
+
+    The OTP is auto-extracted from the message text and stored.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
+
+    from_number = body.get("from", "")
+    raw_message = body.get("message", "")
+
+    otp = _extract_otp(raw_message)
+
+    payload = {
+        "from": from_number,
+        "message": raw_message,
+        "otp": otp,
+        "received_at": None,  # filled below
+    }
+
+    # Stamp received_at as ISO string
+    from datetime import datetime, timezone
+    payload["received_at"] = datetime.now(timezone.utc).isoformat()
+
+    # Store latest (avail for polling)
+    _wa_otp_store["latest"] = payload
+
+    # Push to SSE queue so stream consumers get it immediately
+    try:
+        _wa_otp_queue.put_nowait(payload)
+    except asyncio.QueueFull:
+        # Drop oldest to make room — shouldn't happen in practice
+        try:
+            _wa_otp_queue.get_nowait()
+            _wa_otp_queue.put_nowait(payload)
+        except Exception:
+            pass
+
+    return JSONResponse({"ok": True, "otp": otp})
+
+
+@app.get("/api/whatsapp-otp")
+def get_whatsapp_otp():
+    """
+    Poll endpoint — returns the latest received WhatsApp OTP and CLEARS it.
+    Frontend should poll this or use the SSE stream instead.
+    """
+    payload = _wa_otp_store.pop("latest", None)
+    if payload:
+        return JSONResponse(payload)
+    return JSONResponse({"otp": None})
+
+
+@app.get("/api/whatsapp-otp/stream")
+async def whatsapp_otp_sse(request: Request):
+    """
+    SSE endpoint — frontend opens this EventSource and receives OTP the moment
+    it arrives (no polling needed).
+
+    Each event is:  event: otp\ndata: {...json...}\n\n
+    """
+    async def event_generator():
+        while True:
+            try:
+                payload = await asyncio.wait_for(_wa_otp_queue.get(), timeout=60)
+                yield {"event": "otp", "data": json.dumps(payload)}
+            except asyncio.TimeoutError:
+                # Send a keepalive comment every 60s so the connection stays alive
+                yield {"event": "ping", "data": ""}
+
+    return EventSourceResponse(event_generator())
 
 
 # ─── Entry ────────────────────────────────────────────────────────────────────
